@@ -277,11 +277,14 @@ class Level {
                             g.setDirection('<');
                         }
                     }
-                    
                     delta = directionToDelta(g.getDirection());
                     next = g.getPos() + delta;
-                    g.setPos(next);
-                    activateSwitch(g.getPos());
+                    if (isMoveValid(next) && !guardAt(next)) {
+                        g.setPos(next);
+                        activateSwitch(g.getPos());
+                    }
+
+                    
                 }
             }
         }
@@ -452,7 +455,7 @@ class Game {
                 "#     A      #",
                 "#     #      #",
                 "# @   #  >   #",
-                "#######      #",
+                "#######BBBBBB#",
                 "#    #    ^  #",
                 "#  $ B^      #",
                 "#    #       #",
