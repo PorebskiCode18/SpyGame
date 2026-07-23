@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <ctime>
 #include <vector>
+#include <fstream>
 
 using namespace std;
 
@@ -130,11 +131,20 @@ class Level {
                         goal = Position(r, c);
                     }
                     else if (tile == '>' || tile == '<' || tile == '^' || tile == 'v'){
-                        srand(time(0)); 
-                        int randType = rand() % 2;
-                        guards.push_back(Guard(r, c, tile, randType));
+                        guards.push_back(Guard(r, c, tile, 0));
                         map[r][c] = ' ';
-                    }else if (tile >= 'A' && tile <= 'Z') {
+                    }
+                    else if (tile == 'R' || tile == 'L' || tile == 'U' || tile == 'D'){
+                        char dir;
+                        if (tile == 'R') dir = '>';
+                        if (tile == 'L') dir = '<';
+                        if (tile == 'U') dir = '^';
+                        if (tile == 'D') dir = 'v';
+                        
+                        guards.push_back(Guard(r, c, dir, 1));
+                        map[r][c] = ' ';
+                    }
+                    else if (tile >= 'A' && tile <= 'Z') {
                         doors.push_back(Door(r, c, tile - 'A'));
                         map[r][c] = ' ';
                     }
@@ -176,7 +186,7 @@ class Level {
                                     if (d.isOpen())
                                         cout << ' ';
                                     else
-                                        cout << char('A' + d.getGroup());
+                                        cout << "|";
 
                                     printed = true;
                                     break;
@@ -189,7 +199,7 @@ class Level {
 
                                     if (s.getPos() == p) {
 
-                                        cout << char('a' + s.getGroup());
+                                        cout << "*";
 
                                         printed = true;
                                         break;
@@ -417,12 +427,29 @@ class Level {
         }
 
 };
+class CustomLevel {
+    private:
+        string levelName;
+        vector<string> levelData;
+
+    public:
+        CustomLevel(string name, vector<string> data) : levelName(name), levelData(data) {}
+
+        string getName() const {
+            return levelName;
+        }
+
+        vector<string> getData() const {
+            return levelData;
+        }
+};
 
 class Game {
     private:
         Level CurrentLevel;
         bool stillPlaying = true;
         bool gameOver = false;
+        vector<CustomLevel> customLevels;
     public:
         vector<string> loadLevel(int levelNum) {
             if (levelNum == 1){
@@ -451,18 +478,40 @@ class Game {
                 return {
                 "##############",
                 "# a   #     b#",
-                "#   ^ #   <  #",
+                "#   U #   <  #",
                 "#     A      #",
                 "#     #      #",
-                "# @   #  >   #",
+                "# @   #  R   #",
                 "#######BBBBBB#",
                 "#    #    ^  #",
-                "#  $ B^      #",
+                "#  $ BU      #",
                 "#    #       #",
                 "##############",
                 };
             };
         
+        }
+        vector<string> loadLevelFromFile(string filename) {
+            if (filename.length() < 4 ||filename.substr(filename.length() - 4) != ".lvl")
+                filename += ".lvl";
+
+            ifstream fin(filename);
+
+            if (!fin) {
+                cout << "Unable to open level." << endl;
+                return {};
+            }
+
+            vector<string> level;
+            string line;
+
+            while (getline(fin, line)) {
+                level.push_back(line);
+            }
+
+            fin.close();
+
+            return level;
         }
         void mainMenu() {
             cout << "Welcome to 008-World's End!" << endl;
@@ -474,7 +523,18 @@ class Game {
                 cout << "1) First Light" << endl;
                 cout << "2) Dark Time" << endl;
                 cout << "3) World's End" << endl;
-                cout << "4) Exit" << endl;
+                cout << "4) Create New Level" << endl;
+                cout << "5) Load Level" << endl;
+                cout << "6) Exit" << endl;
+                if (!customLevels.empty()) {
+                    cout << "Custom Levels:" << endl;
+                    int customLevelCount = 0;
+                    for (const CustomLevel& lvl : customLevels) {
+                        cout << (customLevelCount + 7) << ") " << lvl.getName() << endl;
+                        customLevelCount++;
+                    }
+                }
+                
                 string choice;
                 cin >> ws;
                 getline(cin, choice);
@@ -488,12 +548,37 @@ class Game {
                 else if (choice == "3" ||  toLower(choice) == "world's end") {
                     playLevel(3);
                 }
-                else if (choice == "4" || toLower(choice) == "exit") {
+                else if (choice == "4" || toLower(choice) == "level editor") {
+                    levelEditor();
+                }
+                else if (choice == "5" || toLower(choice) == "load level"){
+                    cout << "Enter level filename: ";
+                    string filename;
+                    cin >> ws;
+                    getline(cin, filename);
+                    vector<string> level = loadLevelFromFile(filename);
+                    if (!level.empty()) {
+                        customLevels.push_back(CustomLevel(filename, level));
+                    }
+                }
+                else if (choice == "6" || toLower(choice) == "exit") {
                     stillPlaying = false;
                     cout << "See you next time 008" << endl;
                 }
                 else {
-                    cout << "Invalid choice. Please select a level." << endl;
+                    // Check if it's a custom level number
+                    try {
+                        int choiceNum = stoi(choice);
+                        if (choiceNum >= 7 && choiceNum < (7 + customLevels.size())) {
+                            int customIndex = choiceNum - 7;
+                            playLevel(customLevels[customIndex].getData());
+                        }
+                        else {
+                            cout << "Invalid choice. Please select a level." << endl;
+                        }
+                    } catch (...) {
+                        cout << "Invalid choice. Please select a level." << endl;
+                    }
                 }
             }
         }
@@ -503,12 +588,297 @@ class Game {
             };
             return s;
         }
+        void printLevel(const vector<string>& level) {
+            int rows = level.size();
+            int cols = level[0].size();
+
+            // Print column numbers
+            cout << " ";
+            for (int c = 0; c < cols; c++) {
+                cout << c % 10;
+            }
+            cout << endl;
+
+            // Print each row
+            for (int r = 0; r < rows; r++) {
+                cout << r %10;
+
+                for (int c = 0; c < cols; c++) {
+                    cout << level[r][c];
+                }
+
+                cout << endl;
+            }
+        }
+        void saveLevel(string levelName, const vector<string>& level) {
+
+            if (levelName.length() < 4 || levelName.substr(levelName.length() - 4) != ".lvl"){
+                levelName += ".lvl";
+            }
+            ofstream fout(levelName);
+
+            for (const string& row : level) {
+                fout << row << endl;
+            }
+
+            fout.close();
+
+            cout << "Level saved successfully as " << levelName << "!" << endl;
+        }
+        void levelEditor() {
+            cout << "Welcome to the Level Editor!" << endl;
+            cout << "Enter level name: ";
+            string levelName;
+            cin >> ws;
+            getline(cin, levelName);
+            cout << "Enter number of rows: ";
+            int rows;
+            cin >> rows;
+            cout << "Enter number of columns: ";
+            int columns;
+            cin >> columns;
+            vector<string> Level(rows, string(columns, ' '));
+            for (int r = 0; r < rows; r++) {
+                for (int c = 0; c < columns; c++) {
+                    if (r == 0 || r == rows - 1 || c == 0 || c == columns - 1)
+                        Level[r][c] = '#';
+                }
+            }
+            cout << "Level created successfully!" << endl;
+            
+            bool inEditor = true;
+            while (inEditor) {
+                cout << levelName << ":" << endl;
+                printLevel(Level);
+                cout << "\nObjects:" << endl;
+                cout << "1) Wall (#)" << endl;
+                cout << "2) Empty Space" << endl;
+                cout << "3) Player (@)" << endl;
+                cout << "4) Goal ($)" << endl;
+                cout << "5) Guard" << endl;
+                cout << "6) Door" << endl;
+                cout << "7) Switch" << endl;
+                cout << "8) Inspect" << endl;
+                cout << "9) Save & Quit" << endl;
+                int choice;
+                cout << "\nSelect object: ";
+                cin >> choice;
+
+                if (choice == 9) {
+                    inEditor = false;
+                    saveLevel(levelName, Level);
+                    continue;
+                }
+
+                int row, col;
+                cout << "Row: ";
+                cin >> row;
+                cout << "Column: ";
+                cin >> col;
+
+                if (row < 0 || row >= rows || col < 0 || col >= columns) {
+                    cout << "Invalid position!" << endl;
+                    continue;
+                }
+                switch (choice) {
+                case 1:
+                    Level[row][col] = '#';
+                    break;
+
+                case 2:
+                    Level[row][col] = ' ';
+                    break;
+                case 3:
+                    // Remove any existing player
+                    for (int r = 0; r < rows; r++) {
+                        for (int c = 0; c < columns; c++) {
+                            if (Level[r][c] == '@'){
+                                Level[r][c] = ' ';
+                            }
+                        }
+                    }
+                    Level[row][col] = '@';
+                    break;
+                case 4:
+                    // Remove any existing goal
+                    for (int r = 0; r < rows; r++)
+                        for (int c = 0; c < columns; c++)
+                            if (Level[r][c] == '$')
+                                Level[r][c] = ' ';
+
+                    Level[row][col] = '$';
+                    break;
+                case 5: {
+                    int type;
+                    char dir;
+
+                    cout << "Guard Type" << endl;
+                    cout << "0) Back and Forth" << endl;
+                    cout << "1) Circular" << endl;
+                    cin >> type;
+
+                    cout << "Direction (>, <, ^, v): ";
+                    cin >> dir;
+
+                    if (type == 0) {
+                        Level[row][col] = dir;
+                    }
+                    else {
+                        if (dir == '>') Level[row][col] = 'R';
+                        else if (dir == '<') Level[row][col] = 'L';
+                        else if (dir == '^') Level[row][col] = 'U';
+                        else if (dir == 'v') Level[row][col] = 'D';
+                        else {
+                            cout << "Invalid direction!" << endl;
+                        }
+                    }
+
+                    break;
+                }
+                case 6: {
+                    char group;
+
+                    cout << "Door Group (A-Z): ";
+                    cin >> group;
+
+                    group = toupper(group);
+
+                    Level[row][col] = group;
+
+                    break;
+                }
+                case 7: {
+                    char group;
+
+                    cout << "Switch Group (A-Z): ";
+                    cin >> group;
+
+                    group = tolower(group);
+
+                    Level[row][col] = group;
+
+                    break;
+                }
+                case 8: {      
+                    int inspectRow, inspectCol;
+
+                    cout << "Row: ";
+                    cin >> inspectRow;
+                    cout << "Column: ";
+                    cin >> inspectCol;
+
+                    if (inspectRow < 0 || inspectRow >= rows ||
+                        inspectCol < 0 || inspectCol >= columns) {
+                        cout << "Invalid position!" << endl;
+                        break;
+                    }
+
+                    char object = Level[inspectRow][inspectCol];
+
+                    switch (object) {
+
+                    case '#':
+                        cout << "Wall" << endl;
+                        break;
+
+                    case ' ':
+                        cout << "Empty Space" << endl;
+                        break;
+
+                    case '@':
+                        cout << "Player Spawn" << endl;
+                        break;
+
+                    case '$':
+                        cout << "Goal" << endl;
+                        break;
+
+                    case '>':
+                        cout << "Guard" << endl;
+                        cout << "Movement: Back and Forth" << endl;
+                        cout << "Facing: Right" << endl;
+                        break;
+
+                    case '<':
+                        cout << "Guard" << endl;
+                        cout << "Movement: Back and Forth" << endl;
+                        cout << "Facing: Left" << endl;
+                        break;
+
+                    case '^':
+                        cout << "Guard" << endl;
+                        cout << "Movement: Back and Forth" << endl;
+                        cout << "Facing: Up" << endl;
+                        break;
+
+                    case 'v':
+                        cout << "Guard" << endl;
+                        cout << "Movement: Back and Forth" << endl;
+                        cout << "Facing: Down" << endl;
+                        break;
+
+                    case 'R':
+                        cout << "Guard" << endl;
+                        cout << "Movement: Circular" << endl;
+                        cout << "Facing: Right" << endl;
+                        break;
+
+                    case 'L':
+                        cout << "Guard" << endl;
+                        cout << "Movement: Circular" << endl;
+                        cout << "Facing: Left" << endl;
+                        break;
+
+                    case 'U':
+                        cout << "Guard" << endl;
+                        cout << "Movement: Circular" << endl;
+                        cout << "Facing: Up" << endl;
+                        break;
+
+                    case 'D':
+                        cout << "Guard" << endl;
+                        cout << "Movement: Circular" << endl;
+                        cout << "Facing: Down" << endl;
+                        break;
+
+                    default:
+                        if (isupper(object)) {
+                            cout << "Door" << endl;
+                            cout << "Group: " << object << endl;
+                        }
+                        else if (islower(object)) {
+                            cout << "Switch" << endl;
+                            cout << "Group: " << (char)toupper(object) << endl;
+                        }
+                        else {
+                            cout << "Unknown Object" << endl;
+                        }
+                    }
+
+                    break;
+                
+                }
+                default:
+                    cout << "Invalid choice!" << endl;
+                }
+                
+            }
+        }
         void playLevel(int levelNum){
             CurrentLevel = Level(loadLevel(levelNum));
+            playLevelLoop();
+        }
+
+        void playLevel(const vector<string>& levelData) {
+            CurrentLevel = Level(levelData);
+            playLevelLoop();
+        }
+
+        void playLevelLoop(){
             while(!gameOver){
                 cout << "Map:" << endl;
                 CurrentLevel.printLevel();
-                cout << "Enter move (WASD): ";
+                cout << "Enter action (WASD, 'inspect'): ";
                 string input;
                 cin >> input;
                 input = toLower(input);
