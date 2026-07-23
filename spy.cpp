@@ -47,14 +47,20 @@ class Door : public Object {
 private:
     int group;
     bool open;
-
+    bool numbered;
 public:
-    Door(int r = 0, int c = 0, int g = 0): Object(r, c) {
+    Door(int r = 0, int c = 0, int g = 0, bool n = false): Object(r, c) {
         group = g;
+        cout << g << endl;
         open = false;
+        numbered = n;
     }
 
     int getGroup() const { return group; }
+    void setGroup(int g) {
+        group = g;
+    }
+    bool isNumbered() const { return numbered; }
 
     bool isOpen() const { return open; }
 
@@ -65,13 +71,18 @@ public:
 class Switch : public Object {
 private:
     int group;
-
+    bool numbered;
 public:
-    Switch(int r = 0, int c = 0, int g = 0): Object(r, c) {
+    Switch(int r = 0, int c = 0, int g = 0, bool n = false): Object(r, c) {
         group = g;
+        numbered = n;
     }
 
     int getGroup() const { return group; }
+    void setGroup(int g) {
+        group = g;
+    }
+    bool isNumbered() const { return numbered; }
 };
 
 class Player : public Object {
@@ -155,8 +166,80 @@ class Level {
                 }
             }
         } 
-        void printLevel(){
+        //for loading levels with numbered doors and switches
+        Level(vector<string> m, const vector<Door>& numD, const vector<Switch>& numS) {
+            map = m;
             for (int r = 0; r < map.size(); r++) {
+                for (int c = 0; c < map[r].size(); c++) {
+
+                    char tile = map[r][c];
+
+                    if (tile == '@'){
+                        player = Player(r, c);
+                        map[r][c] = ' ';
+                    }
+                    else if (tile == '$'){
+                        goal = Position(r, c);
+                    }
+                    else if (tile == '>' || tile == '<' || tile == '^' || tile == 'v'){
+                        guards.push_back(Guard(r, c, tile, 0));
+                        map[r][c] = ' ';
+                    }
+                    else if (tile == 'R' || tile == 'L' || tile == 'U' || tile == 'D'){
+                        char dir;
+                        if (tile == 'R') dir = '>';
+                        if (tile == 'L') dir = '<';
+                        if (tile == 'U') dir = '^';
+                        if (tile == 'D') dir = 'v';
+                        
+                        guards.push_back(Guard(r, c, dir, 1));
+                        map[r][c] = ' ';
+                    }
+                    else if (tile >= 'A' && tile <= 'Z') {
+                        doors.push_back(Door(r, c, tile - 'A'));
+                        map[r][c] = ' ';
+                    }
+                    else if (tile == '|') {
+
+                        for (const Door &d : numD) {
+
+                            if (d.getPos() == Position(r, c)) {
+                                doors.push_back(d);
+                                break;
+                            }
+                        }
+
+                        map[r][c] = ' ';
+                    }
+                    else if (tile >= 'a' && tile <= 'z') {
+                        switches.push_back(Switch(r, c, tile - 'a'));
+                        map[r][c] = ' ';
+                    }
+                    else if (tile == '*') {
+
+                        for (const Switch &s : numS) {
+
+                            if (s.getPos() == Position(r, c)) {
+                                switches.push_back(s);
+                                break;
+                            }
+                        }
+
+                        map[r][c] = ' ';
+                    }
+                }
+            }
+        } 
+        void printLevel(){
+            // Print column numbers
+            cout << " ";
+            for (int c = 0; c < map[0].size(); c++) {
+                cout << c % 10;
+            }
+            cout << endl;
+            for (int r = 0; r < map.size(); r++) {
+                // Print row number
+                cout << r % 10;
                 for (int c = 0; c < map[r].size(); c++) {
 
                     Position p(r, c);
@@ -392,7 +475,12 @@ class Level {
                     Door *d = getDoor(p);
 
                     cout << "Inspection: Door" << endl;
-                    cout << "Group: " << char('A' + d->getGroup()) << endl;
+                    if (d->isNumbered()) {
+                        cout << "Group: " << d->getGroup() << endl;
+                    }
+                    else {
+                        cout << "Group: " << char('A' + d->getGroup()) << endl;
+                    }
                     cout << "State: ";
 
                     if (d->isOpen()){
@@ -406,7 +494,12 @@ class Level {
                     Switch *s = getSwitch(p);
 
                     cout << "Inspection: Switch" << endl;
-                    cout << "Group: " << char('A' + s->getGroup()) << endl;
+                    if (s->isNumbered()) {
+                        cout << "Group: " << s->getGroup() << endl;
+                    }
+                    else {
+                        cout << "Group: " << char('A' + s->getGroup()) << endl;
+                    }
                 }else if (tile == ' ') {
                     cout << "Inspection: Empty space." << endl;
                 }
@@ -431,9 +524,20 @@ class CustomLevel {
     private:
         string levelName;
         vector<string> levelData;
+        vector<Door> levelDoors;
+        vector<Switch> levelSwitches;
 
     public:
-        CustomLevel(string name, vector<string> data) : levelName(name), levelData(data) {}
+        CustomLevel(string name,
+                vector<string> data,
+                vector<Door> doors = {},
+                vector<Switch> switches = {})
+    {
+        levelName = name;
+        levelData = data;
+        levelDoors = doors;
+        levelSwitches = switches;
+    }
 
         string getName() const {
             return levelName;
@@ -441,6 +545,12 @@ class CustomLevel {
 
         vector<string> getData() const {
             return levelData;
+        }
+        vector<Door> getDoors() const {
+            return levelDoors;
+        }
+        vector<Switch> getSwitches() const {
+            return levelSwitches;
         }
 };
 
@@ -491,7 +601,9 @@ class Game {
             };
         
         }
-        vector<string> loadLevelFromFile(string filename) {
+        void loadLevelFromFile(string filename,vector<string> &level,
+            vector<Door> &numberedDoors,
+            vector<Switch> &numberedSwitches) {
             if (filename.length() < 4 ||filename.substr(filename.length() - 4) != ".lvl")
                 filename += ".lvl";
 
@@ -499,10 +611,27 @@ class Game {
 
             if (!fin) {
                 cout << "Unable to open level." << endl;
-                return {};
+                return;
             }
+            string word;
 
-            vector<string> level;
+            while (fin >> word) {
+
+                if (word == "MAP")
+                    break;
+
+                int row, col, group;
+
+                fin >> row >> col >> group;
+
+                if (word == "DOOR") {
+                    numberedDoors.push_back(Door(row, col, group,true));
+                }
+                else if (word == "SWITCH") {
+                    numberedSwitches.push_back(Switch(row, col, group,true));
+                }
+            }
+            fin.ignore();
             string line;
 
             while (getline(fin, line)) {
@@ -511,7 +640,6 @@ class Game {
 
             fin.close();
 
-            return level;
         }
         void mainMenu() {
             cout << "Welcome to 008-World's End!" << endl;
@@ -556,9 +684,17 @@ class Game {
                     string filename;
                     cin >> ws;
                     getline(cin, filename);
-                    vector<string> level = loadLevelFromFile(filename);
+                    vector<string> level;
+                    vector<Door> numberedDoors;
+                    vector<Switch> numberedSwitches;
+
+                    loadLevelFromFile(filename, level, numberedDoors, numberedSwitches);
+
                     if (!level.empty()) {
-                        customLevels.push_back(CustomLevel(filename, level));
+
+                        customLevels.push_back(
+                            CustomLevel(filename, level, numberedDoors, numberedSwitches)
+                        );
                     }
                 }
                 else if (choice == "6" || toLower(choice) == "exit") {
@@ -571,7 +707,25 @@ class Game {
                         int choiceNum = stoi(choice);
                         if (choiceNum >= 7 && choiceNum < (7 + customLevels.size())) {
                             int customIndex = choiceNum - 7;
-                            playLevel(customLevels[customIndex].getData());
+                            cout << endl;
+                            cout << customLevels[customIndex].getName() << endl;
+                            cout << "1) Play" << endl;
+                            cout << "2) Edit" << endl;
+                            cout << "3) Back" << endl;
+
+                            int option;
+                            cin >> option;
+
+                            if (option == 1) {
+
+                                playLevel(customIndex, true);
+
+                            }
+                            else if (option == 2) {
+
+                                levelEditor(customIndex);
+
+                            }
                         }
                         else {
                             cout << "Invalid choice. Please select a level." << endl;
@@ -610,13 +764,30 @@ class Game {
                 cout << endl;
             }
         }
-        void saveLevel(string levelName, const vector<string>& level) {
+        void saveLevel(string levelName, const vector<string>& level,const vector<Door>& numberedDoors,
+               const vector<Switch>& numberedSwitches) {
 
             if (levelName.length() < 4 || levelName.substr(levelName.length() - 4) != ".lvl"){
                 levelName += ".lvl";
             }
             ofstream fout(levelName);
+            // Save numbered doors
+            for (const Door &d : numberedDoors) {
+                fout << "DOOR "
+                    << d.getPos().getRow() << " "
+                    << d.getPos().getCol() << " "
+                    << d.getGroup() << endl;
+            }
 
+            // Save numbered switches
+            for (const Switch &s : numberedSwitches) {
+                fout << "SWITCH "
+                    << s.getPos().getRow() << " "
+                    << s.getPos().getCol() << " "
+                    << s.getGroup() << endl;
+            }
+
+            fout << "MAP" << endl;
             for (const string& row : level) {
                 fout << row << endl;
             }
@@ -625,26 +796,57 @@ class Game {
 
             cout << "Level saved successfully as " << levelName << "!" << endl;
         }
-        void levelEditor() {
+        void levelEditor(int customIndex = -1) {
+            
             cout << "Welcome to the Level Editor!" << endl;
-            cout << "Enter level name: ";
+
             string levelName;
-            cin >> ws;
-            getline(cin, levelName);
-            cout << "Enter number of rows: ";
-            int rows;
-            cin >> rows;
-            cout << "Enter number of columns: ";
-            int columns;
-            cin >> columns;
-            vector<string> Level(rows, string(columns, ' '));
-            for (int r = 0; r < rows; r++) {
-                for (int c = 0; c < columns; c++) {
-                    if (r == 0 || r == rows - 1 || c == 0 || c == columns - 1)
-                        Level[r][c] = '#';
+            vector<string> Level;
+            vector<Door> numberedDoors;
+            vector<Switch> numberedSwitches;
+
+            int rows, columns;
+
+            if (customIndex == -1) {
+
+                cout << "Enter level name: ";
+                cin >> ws;
+                getline(cin, levelName);
+
+                cout << "Enter number of rows: ";
+                cin >> rows;
+
+                cout << "Enter number of columns: ";
+                cin >> columns;
+
+                Level = vector<string>(rows, string(columns, ' '));
+
+                for (int r = 0; r < rows; r++) {
+                    for (int c = 0; c < columns; c++) {
+
+                        if (r == 0 || r == rows - 1 ||
+                            c == 0 || c == columns - 1)
+                            Level[r][c] = '#';
+                    }
                 }
+
+                cout << "Level created successfully!" << endl;
             }
-            cout << "Level created successfully!" << endl;
+            else {
+
+                levelName = customLevels[customIndex].getName();
+
+                Level = customLevels[customIndex].getData();
+
+                numberedDoors = customLevels[customIndex].getDoors();
+
+                numberedSwitches = customLevels[customIndex].getSwitches();
+
+                rows = Level.size();
+                columns = Level[0].size();
+
+                cout << "Editing " << levelName << endl;
+            }
             
             bool inEditor = true;
             while (inEditor) {
@@ -665,8 +867,26 @@ class Game {
                 cin >> choice;
 
                 if (choice == 9) {
+                    saveLevel(levelName, Level, numberedDoors, numberedSwitches);
+
+                    if (customIndex == -1) {
+
+                        customLevels.push_back(
+                            CustomLevel(levelName,
+                                        Level,
+                                        numberedDoors,
+                                        numberedSwitches));
+                    }
+                    else {
+
+                        customLevels[customIndex] =
+                            CustomLevel(levelName,
+                                        Level,
+                                        numberedDoors,
+                                        numberedSwitches);
+                    }
+
                     inEditor = false;
-                    saveLevel(levelName, Level);
                     continue;
                 }
 
@@ -736,44 +956,79 @@ class Game {
                     break;
                 }
                 case 6: {
-                    char group;
+                    cout << "Group Type:" << endl;
+                    cout << "1) Letter (A-Z)" << endl;
+                    cout << "2) Number" << endl;
 
-                    cout << "Door Group (A-Z): ";
-                    cin >> group;
+                    int groupType;
+                    cin >> groupType;
 
-                    group = toupper(group);
+                    if (groupType == 1) {
 
-                    Level[row][col] = group;
+                        char group;
+
+                        cout << "Door Group (A-Z): ";
+                        cin >> group;
+
+                        Level[row][col] = toupper(group);
+
+                    }
+                    else if (groupType == 2) {
+                        int group;
+
+                        cout << "Door Group Number: ";
+                        cin >> group;
+
+                        Level[row][col] = '|';
+
+                        numberedDoors.push_back(Door(row, col, group,true));
+                    }
 
                     break;
                 }
                 case 7: {
-                    char group;
 
-                    cout << "Switch Group (A-Z): ";
-                    cin >> group;
+                    cout << "Group Type:" << endl;
+                    cout << "1) Letter (A-Z)" << endl;
+                    cout << "2) Number" << endl;
 
-                    group = tolower(group);
+                    int groupType;
+                    cin >> groupType;
 
-                    Level[row][col] = group;
+                    if (groupType == 1) {
+
+                        char group;
+
+                        cout << "Switch Group (A-Z): ";
+                        cin >> group;
+
+                        Level[row][col] = tolower(group);
+
+                    }
+                    else if (groupType == 2) {
+
+                        int group;
+
+                        cout << "Switch Group Number: ";
+                        cin >> group;
+
+                        Level[row][col] = '*';
+
+                        numberedSwitches.push_back(Switch(row, col, group,true));
+                    }
 
                     break;
                 }
                 case 8: {      
-                    int inspectRow, inspectCol;
+                    
 
-                    cout << "Row: ";
-                    cin >> inspectRow;
-                    cout << "Column: ";
-                    cin >> inspectCol;
-
-                    if (inspectRow < 0 || inspectRow >= rows ||
-                        inspectCol < 0 || inspectCol >= columns) {
+                    if (row < 0 || row >= rows ||
+                        col < 0 || col >= columns) {
                         cout << "Invalid position!" << endl;
                         break;
                     }
 
-                    char object = Level[inspectRow][inspectCol];
+                    char object = Level[row][col];
 
                     switch (object) {
 
@@ -842,7 +1097,39 @@ class Game {
                         break;
 
                     default:
-                        if (isupper(object)) {
+                        if (object == '|') {
+
+                            bool found = false;
+
+                            for (const Door &d : numberedDoors) {
+                                if (d.getPos() == Position(row, col)) {
+                                    cout << "Door" << endl;
+                                    cout << "Group: " << d.getGroup() << endl;
+                                    found = true;
+                                    break;
+                                }
+                            }
+
+                            if (!found)
+                                cout << "Unknown numbered door." << endl;
+                        }
+                        else if (object == '*') {
+
+                            bool found = false;
+
+                            for (const Switch &s : numberedSwitches) {
+                                if (s.getPos() == Position(row, col)) {
+                                    cout << "Switch" << endl;
+                                    cout << "Group: " << s.getGroup() << endl;
+                                    found = true;
+                                    break;
+                                }
+                            }
+
+                            if (!found)
+                                cout << "Unknown numbered switch." << endl;
+                        }
+                        else if (isupper(object)) {
                             cout << "Door" << endl;
                             cout << "Group: " << object << endl;
                         }
@@ -869,8 +1156,11 @@ class Game {
             playLevelLoop();
         }
 
-        void playLevel(const vector<string>& levelData) {
-            CurrentLevel = Level(levelData);
+        void playLevel(int customIndex, bool isCustom) {
+            if (!isCustom) {
+                playLevel(customIndex); return;
+            }
+            CurrentLevel = Level( customLevels[customIndex].getData(), customLevels[customIndex].getDoors(), customLevels[customIndex].getSwitches() );
             playLevelLoop();
         }
 
